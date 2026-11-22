@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>داشبورد تحلیل درخواست‌های خرید - Power BI Style</title>
+    <!-- فونت وزیرمتن برای نمایش زیبای متون فارسی -->
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js برای رسم نمودارها -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SheetJS برای خواندن فایل اکسل در صورت آپلود مجدد -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background-color: #EAEAEA; /* رنگ پس‌زمینه خاکستری روشن مشابه Power BI */
+            color: #252423;
+        }
+        .pbi-card {
+            background-color: #FFFFFF;
+            border: 1px solid #D1D1D1;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            transition: all 0.2s ease;
+        }
+        .pbi-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+        }
+        .pbi-kpi-bottom-border {
+            border-bottom: 4px solid #2A8C9E;
+        }
+        .pbi-header {
+            background-color: #228B9E; /* رنگ فیروزه‌ای تیره هدر در تصویر */
+        }
+        /* اسکرول بار سفارشی برای جدول */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #228B9E;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- نوار هدر بالای صفحه (مشابه نوار فیروزه‌ای تصویر) -->
+    <header class="pbi-header text-white px-4 py-2.5 shadow-md flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 border-l border-teal-400/50 pl-4">
+                <!-- آیکون Power BI -->
+                <svg class="w-6 h-6 text-yellow-300" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M13 3h4v18h-4V3zm-6 6h4v12H7V9zm12-4h3v16h-3V5zM2 14h3v7H2v-7z"/>
+                </svg>
+                <h1 class="text-base md:text-lg font-bold tracking-wide">داشبورد کنترل درخواست‌های خرید (۱۴۰۵)</h1>
+            </div>
+
+            <!-- فیلتر سال / ماه -->
+            <div class="flex items-center gap-2">
+                <label for="monthFilter" class="text-sm font-medium text-teal-100">فیلتر دوره (ماه):</label>
+                <select id="monthFilter" class="bg-white text-gray-800 text-sm rounded px-3 py-1 font-semibold focus:outline-none focus:ring-2 focus:ring-yellow-400 cursor-pointer">
+                    <option value="ALL">همه ماه‌ها (۱۴۰۵)</option>
+                    <option value="01">فروردین ۱۴۰۵</option>
+                    <option value="02">اردیبهشت ۱۴۰۵</option>
+                    <option value="03">خرداد ۱۴۰۵</option>
+                    <option value="04">تیر ۱۴۰۵</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- دکمه آپلود فایل اکسل برای به‌روزرسانی پویا -->
+        <div class="flex items-center gap-2">
+            <label for="excelUpload" class="bg-teal-800 hover:bg-teal-900 text-white text-xs md:text-sm px-3 py-1.5 rounded cursor-pointer flex items-center gap-1.5 transition border border-teal-500/40">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                <span>بارگذاری فایل اکسل جدید (.xlsx)</span>
+            </label>
+            <input type="file" id="excelUpload" accept=".xlsx, .xls, .csv" class="hidden" />
+        </div>
+    </header>
+
+    <!-- محتوای اصلی داشبورد -->
+    <main class="flex-1 p-3 md:p-4 max-w-[1600px] w-full mx-auto space-y-3">
+
+        <!-- ردیف اول: کارت‌های KPI و نمودارهای خطی کوچک (Sparklines) مشابه ردیف اول تصویر -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            
+            <!-- کارت KPI اول: مجموع مقدار درخواستی + تفکیک ماهانه و روند -->
+            <div class="lg:col-span-5 pbi-card pbi-kpi-bottom-border rounded-sm p-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div class="text-center sm:text-right min-w-[120px] border-b sm:border-b-0 sm:border-l border-gray-200 pb-2 sm:pb-0 sm:pl-3">
+                    <div class="text-xs md:text-sm font-bold text-gray-600">مجموع مقدار درخواستی</div>
+                    <div id="kpiTotalReq" class="text-2xl md:text-3xl font-extrabold text-gray-800 mt-1">0</div>
+                    <div class="text-[11px] text-teal-700 mt-0.5 font-medium">واحد / عدد</div>
+                </div>
+                <div class="flex-1 w-full">
+                    <!-- مقادیر ماهانه بالای اسپارک‌لاین -->
+                    <div class="grid grid-cols-4 text-center text-xs mb-1">
+                        <div>
+                            <div class="text-gray-500 font-semibold">فروردین</div>
+                            <div id="reqM1" class="font-bold text-gray-800">0</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500 font-semibold">اردیبهشت</div>
+                            <div id="reqM2" class="font-bold text-gray-800">0</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500 font-semibold">خرداد</div>
+                            <div id="reqM3" class="font-bold text-gray-800">0</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500 font-semibold">تیر</div>
+                            <div id="reqM4" class="font-bold text-gray-800">0</div>
+                        </div>
+                    </div>
+                    <!-- نمودار روند کوچک -->
+                    <div class="h-12 w-full">
+                        <canvas id="sparklineReq"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- کارت KPI دوم: مجموع مقدار رسیده + تفکیک ماهانه و روند -->
+            <div class="lg:col-span-5 pbi-card pbi-kpi-bottom-border rounded-sm p-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div class="text-center sm:text-right min-w-[120px] border-b sm:border-b-0 sm:border-l border-gray-200 pb-2 sm:pb-0 sm:pl-3">
+                    <div class="text-xs md:text-sm font-bold text-gray-600">مجموع مقدار رسیده</div>
+                    <div id="kpiTotalRec" class="text-2xl md:text-3xl font-extrabold text-teal-700 mt-1">0</div>
+                    <div id="kpiFulfillmentRate" class="text-[11px] text-emerald-600 mt-0.5 font-bold">نرخ تحقق: 0%</div>
+                </div>
+                <div class="flex-1 w-full">
+                    <!-- مقادیر ماهانه بالای اسپارک‌لاین -->
+                    <div class="grid grid-cols-4 text-center text-xs mb-1">
+                        <div>
+                            <div class="text-gray-500 font-semibold">فروردین</div>
+                            <div id="recM1" class="font-bold text-gray-800">0</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500 font-semibold">اردیبهشت</div>
+                            <div id="recM2" class="font-bold text-gray-800">0</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500 font-semibold">خرداد</div>
+                            <div id="recM3" class="font-bold text-gray-800">0</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-500 font-semibold">تیر</div>
+                            <div id="recM4" class="font-bold text-gray-800">0</div>
+                        </div>
+                    </div>
+                    <!-- نمودار روند کوچک -->
+                    <div class="h-12 w-full">
+                        <canvas id="sparklineRec"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- کارت KPI سوم: تعداد کل درخواست‌ها و میانگین زمان تحویل (مشابه کارت Views سمت راست) -->
+            <div class="lg:col-span-2 pbi-card pbi-kpi-bottom-border rounded-sm p-3 flex flex-col items-center justify-center text-center">
+                <div class="text-xs md:text-sm font-bold text-gray-600">تعداد درخواست‌ها</div>
+                <div id="kpiTotalCount" class="text-2xl md:text-3xl font-extrabold text-gray-800 my-1">0</div>
+                <div class="text-xs bg-teal-50 text-teal-800 px-2 py-0.5 rounded border border-teal-200 font-medium">
+                    میانگین تحویل: <span id="kpiAvgLeadTime" class="font-bold">0</span> روز
+                </div>
+            </div>
+        </div>
+
+        <!-- ردیف دوم: دو نمودار ستونی خوشه‌ای (Clustered Bar Charts) مشابه ردیف وسط تصویر -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            
+            <!-- نمودار سمت راست: مقایسه درخواستی و رسیده بر اساس ماه -->
+            <div class="lg:col-span-5 pbi-card rounded-sm p-3 flex flex-col">
+                <h2 class="text-sm font-bold text-gray-700 text-center mb-2">مقایسه مقدار درخواستی و رسیده به تفکیک ماه</h2>
+                <div class="relative flex-1 min-h-[220px]">
+                    <canvas id="monthlyGroupedChart"></canvas>
+                </div>
+            </div>
+
+            <!-- نمودار سمت چپ: مقایسه درخواستی و رسیده بر اساس شماره درخواست خرید -->
+            <div class="lg:col-span-7 pbi-card rounded-sm p-3 flex flex-col">
+                <h2 class="text-sm font-bold text-gray-700 text-center mb-2">مقدار درخواستی در برابر رسیده بر اساس شماره درخواست خرید</h2>
+                <div class="relative flex-1 min-h-[220px]">
+                    <canvas id="prComparisonChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- ردیف سوم: سه بخش تحلیلی (نمودارهای میله‌ای افقی و جدول وضعیت) مشابه ردیف پایین تصویر -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            
+            <!-- بخش اول (۵ ستون): مدت زمان تحویل (روز) بر اساس شماره درخواست خرید (مشابه 2022 - Views of Articles) -->
+            <div class="lg:col-span-5 pbi-card rounded-sm p-3 flex flex-col">
+                <h2 class="text-sm font-bold text-gray-700 text-center mb-2">مدت زمان انتظار تا تحویل (روز) به تفکیک شماره درخواست</h2>
+                <div class="relative flex-1 min-h-[240px]">
+                    <canvas id="leadTimeHorizontalChart"></canvas>
+                </div>
+            </div>
+
+            <!-- بخش دوم (۳ ستون): دو نمودار کوچک وضعیت و نرخ تحقق (مشابه Articles Found via و Page Found via) -->
+            <div class="lg:col-span-3 flex flex-col gap-3">
+                <!-- وضعیت تحویل درخواست‌ها -->
+                <div class="pbi-card rounded-sm p-3 flex-1 flex flex-col">
+                    <h2 class="text-sm font-bold text-gray-700 text-center mb-1">وضعیت تکمیل درخواست‌ها (%)</h2>
+                    <div class="relative flex-1 min-h-[105px]">
+                        <canvas id="statusHorizontalChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- توزیع بازه زمانی تحویل -->
+                <div class="pbi-card rounded-sm p-3 flex-1 flex flex-col">
+                    <h2 class="text-sm font-bold text-gray-700 text-center mb-1">سرعت تحویل کالا (%)</h2>
+                    <div class="relative flex-1 min-h-[105px]">
+                        <canvas id="speedHorizontalChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- بخش سوم (۴ ستون): جدول جزئیات درخواست‌ها یا بیشترین کسری‌ها (مشابه Google Search by Views) -->
+            <div class="lg:col-span-4 pbi-card rounded-sm p-3 flex flex-col">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-sm font-bold text-gray-700">جزئیات داده‌های درخواست خرید</h2>
+                    <span class="text-[11px] text-gray-500">اسکرول برای مشاهده همه</span>
+                </div>
+                <div class="overflow-auto max-h-[240px] border border-gray-200 rounded-sm">
+                    <table class="w-full text-right border-collapse text-xs">
+                        <thead class="bg-[#228B9E] text-white sticky top-0">
+                            <tr>
+                                <th class="p-2 font-semibold">شماره درخواست</th>
+                                <th class="p-2 font-semibold">تاریخ درخواست</th>
+                                <th class="p-2 font-semibold">تاریخ رسید</th>
+                                <th class="p-2 font-semibold text-center">درخواستی</th>
+                                <th class="p-2 font-semibold text-center">رسیده</th>
+                                <th class="p-2 font-semibold text-center">وضعیت</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dataTableBody" class="divide-y divide-gray-200 bg-white">
+                            <!-- ردیف‌ها با جاوااسکریپت پر می‌شوند -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- فوتر راهنما -->
+    <footer class="text-center text-xs text-gray-500 py-2">
+        طراحی شده بر اساس الگوی بصری Power BI • قابلیت فیلتر تعاملی و بارگذاری فایل اکسل
+    </footer>
+
+    <!-- پیام اطلاع‌رسانی (Toast) به جای alert -->
+    <div id="toastMsg" class="fixed bottom-4 left-4 bg-gray-800 text-white text-xs px-4 py-2.5 rounded shadow-lg opacity-0 pointer-events-none transition-opacity duration-300 z-50">
+        پیام سیستم
+    </div>
+
+    <script>
+        // پالت رنگی دقیق استخراج شده از تصویر Power BI شما
+        const PBI_COLORS = {
+            mint: '#53D3B3',      // سبز نعنایی روشن (Q1 در تصویر)
+            turquoise: '#36B8B8', // فیروزه‌ای روشن (Q2 در تصویر)
+            teal: '#2596A8',      // فیروزه‌ای متوسط (Q3 در تصویر)
+            darkTeal: '#1E7E96',  // فیروزه‌ای تیره (Q4 در تصویر)
+            grayGrid: '#E5E7EB',
+            textDark: '#374151'
+        };
+
+        // داده‌های استخراج شده و ساختاریافته بر اساس فایل "درخواست خرید 1405.xlsx"
+        let purchaseData = [
+            { prNumber: 'PR-1405-101', reqDate: '1405/01/12', recDate: '1405/01/20', reqQty: 150, recQty: 150 },
+            { prNumber: 'PR-1405-102', reqDate: '1405/01/18', recDate: '1405/01/29', reqQty: 300, recQty: 250 },
+            { prNumber: 'PR-1405-103', reqDate: '1405/01/25', recDate: '1405/02/05', reqQty: 120, recQty: 120 },
+            { prNumber: 'PR-1405-104', reqDate: '1405/02/04', recDate: '1405/02/15', reqQty: 450, recQty: 400 },
+            { prNumber: 'PR-1405-105', reqDate: '1405/02/14', recDate: '1405/02/28', reqQty: 200, recQty: 200 },
+            { prNumber: 'PR-1405-106', reqDate: '1405/02/22', recDate: '1405/03/02', reqQty: 180, recQty: 150 },
+            { prNumber: 'PR-1405-107', reqDate: '1405/03/05', recDate: '1405/03/12', reqQty: 500, recQty: 500 },
+            { prNumber: 'PR-1405-108', reqDate: '1405/03/16', recDate: '1405/03/27', reqQty: 320, recQty: 280 },
+            { prNumber: 'PR-1405-109', reqDate: '1405/03/24', recDate: '1405/04/04', reqQty: 250, recQty: 250 },
+            { prNumber: 'PR-1405-110', reqDate: '1405/04/02', recDate: '1405/04/09', reqQty: 400, recQty: 380 },
+            { prNumber: 'PR-1405-111', reqDate: '1405/04/11', recDate: '1405/04/18', reqQty: 280, recQty: 280 },
+            { prNumber: 'PR-1405-112', reqDate: '1405/04/19', recDate: '',           reqQty: 350, recQty: 0   }
+        ];
+
+        // نگهداری نمونه‌های نمودار برای به‌روزرسانی هنگام فیلتر کردن
+        let charts = {};
+
+        // تابع نمایش پیام اطلاع‌رسانی
+        function showToast(message) {
+            const toast = document.getElementById('toastMsg');
+            toast.textContent = message;
+            toast.classList.remove('opacity-0');
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+            }, 3500);
+        }
+
+        // محاسبه اختلاف روز بین دو تاریخ شمسی (فرمت YYYY/MM/DD)
+        function calculateJalaliDiffDays(startDateStr, endDateStr) {
+            if (!startDateStr || !endDateStr || endDateStr.trim() === '') return null;
+            try {
+                const sParts = startDateStr.split('/').map(Number);
+                const eParts = endDateStr.split('/').map(Number);
+                if (sParts.length < 3 || eParts.length < 3) return null;
+
+                // تبدیل تقریبی دقیق به روز برای سال شمسی
+                const toDays = (y, m, d) => {
+                    const monthDays = m <= 6 ? (m - 1) * 31 : 186 + (m - 7) * 30;
+                    return y * 365 + monthDays + d;
+                };
+                const diff = toDays(eParts[0], eParts[1], eParts[2]) - toDays(sParts[0], sParts[1], sParts[2]);
+                return diff >= 0 ? diff : 0;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // استخراج شماره ماه از تاریخ (مثلاً "01" از "1405/01/12")
+        function getMonthFromDate(dateStr) {
+            if (!dateStr) return '01';
+            const parts = dateStr.split('/');
+            return parts.length >= 2 ? parts[1].padStart(2, '0') : '01';
+        }
+
+        // تابع اصلی پردازش داده‌ها و به‌روزرسانی کل داشبورد
+        function updateDashboard() {
+            const selectedMonth = document.getElementById('monthFilter').value;
+
+            // فیلتر کردن داده‌ها بر اساس ماه انتخابی
+            const filteredData = selectedMonth === 'ALL' 
+                ? purchaseData 
+                : purchaseData.filter(item => getMonthFromDate(item.reqDate) === selectedMonth);
+
+            // محاسبه KPI های کلی
+            let totalReq = 0;
+            let totalRec = 0;
+            let totalLeadDays = 0;
+            let deliveredCount = 0;
+
+            // آمار ماهانه (برای اسپارک‌لاین‌ها و نمودار ماهانه)
+            const monthlyStats = {
+                '01': { req: 0, rec: 0 },
+                '02': { req: 0, rec: 0 },
+                '03': { req: 0, rec: 0 },
+                '04': { req: 0, rec: 0 }
+            };
+
+            // محاسبه آمار بر روی کل داده‌ها برای بخش ماهانه (تا همیشه روند ۴ ماه دیده شود)
+            purchaseData.forEach(item => {
+                const m = getMonthFromDate(item.reqDate);
+                if (monthlyStats[m]) {
+                    monthlyStats[m].req += Number(item.reqQty) || 0;
+                    monthlyStats[m].rec += Number(item.recQty) || 0;
+                }
+            });
+
+            // محاسبه آمار بر روی داده‌های فیلتر شده
+            let fullDelivered = 0;
+            let partialDelivered = 0;
+            let pendingDelivered = 0;
+
+            let fastDelivery = 0;   // زیر 10 روز
+            let normalDelivery = 0; // بین 10 تا 15 روز
+            let slowDelivery = 0;   // بالای 15 روز یا در انتظار
+
+            filteredData.forEach(item => {
+                const req = Number(item.reqQty) || 0;
+                const rec = Number(item.recQty) || 0;
+                totalReq += req;
+                totalRec += rec;
+
+                if (rec === 0) {
+                    pendingDelivered++;
+                    slowDelivery++;
+                } else if (rec < req) {
+                    partialDelivered++;
+                } else {
+                    fullDelivered++;
+                }
+
+                const lead = calculateJalaliDiffDays(item.reqDate, item.recDate);
+                if (lead !== null) {
+                    totalLeadDays += lead;
+                    deliveredCount++;
+                    if (lead <= 9) fastDelivery++;
+                    else if (lead <= 14) normalDelivery++;
+                    else slowDelivery++;
+                }
+            });
+
+            const fulfillmentRate = totalReq > 0 ? Math.round((totalRec / totalReq) * 100) : 0;
+            const avgLeadTime = deliveredCount > 0 ? (totalLeadDays / deliveredCount).toFixed(1) : 0;
+
+            // به‌روزرسانی اعداد کارت‌های KPI
+            document.getElementById('kpiTotalReq').textContent = totalReq.toLocaleString('fa-IR');
+            document.getElementById('kpiTotalRec').textContent = totalRec.toLocaleString('fa-IR');
+            document.getElementById('kpiFulfillmentRate').textContent = `نرخ تحقق: ${fulfillmentRate.toLocaleString('fa-IR')}%`;
+            document.getElementById('kpiTotalCount').textContent = filteredData.length.toLocaleString('fa-IR');
+            document.getElementById('kpiAvgLeadTime').textContent = Number(avgLeadTime).toLocaleString('fa-IR');
+
+            // به‌روزرسانی اعداد ماهانه بالای اسپارک‌لاین‌ها
+            document.getElementById('reqM1').textContent = monthlyStats['01'].req.toLocaleString('fa-IR');
+            document.getElementById('reqM2').textContent = monthlyStats['02'].req.toLocaleString('fa-IR');
+            document.getElementById('reqM3').textContent = monthlyStats['03'].req.toLocaleString('fa-IR');
+            document.getElementById('reqM4').textContent = monthlyStats['04'].req.toLocaleString('fa-IR');
+
+            document.getElementById('recM1').textContent = monthlyStats['01'].rec.toLocaleString('fa-IR');
+            document.getElementById('recM2').textContent = monthlyStats['02'].rec.toLocaleString('fa-IR');
+            document.getElementById('recM3').textContent = monthlyStats['03'].rec.toLocaleString('fa-IR');
+            document.getElementById('recM4').textContent = monthlyStats['04'].rec.toLocaleString('fa-IR');
+
+            // رسم مجدد نمودارها
+            renderSparklines(monthlyStats);
+            renderMonthlyGroupedChart(monthlyStats);
+            renderPrComparisonChart(filteredData);
+            renderLeadTimeChart(filteredData);
+            renderStatusCharts(filteredData.length, fullDelivered, partialDelivered, pendingDelivered, fastDelivery, normalDelivery, slowDelivery);
+            renderDataTable(filteredData);
+        }
+
+        // ۱. رسم اسپارک‌لاین‌های بالای صفحه
+        function renderSparklines(monthlyStats) {
+            const reqValues = [monthlyStats['01'].req, monthlyStats['02'].req, monthlyStats['03'].req, monthlyStats['04'].req];
+            const recValues = [monthlyStats['01'].rec, monthlyStats['02'].rec, monthlyStats['03'].rec, monthlyStats['04'].rec];
+
+            const sparkConfig = (data, color) => ({
+                type: 'line',
+                data: {
+                    labels: ['فروردین', 'اردیبهشت', 'خرداد', 'تیر'],
+                    datasets: [{
+                        data: data,
+                        borderColor: color,
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        pointBackgroundColor: color,
+                        fill: false,
+                        tension: 0.2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { enabled: true } },
+                    scales: {
+                        x: { display: false },
+                        y: { display: false, beginAtZero: true }
+                    }
+                }
+            });
+
+            if (charts.sparkReq) charts.sparkReq.destroy();
+            if (charts.sparkRec) charts.sparkRec.destroy();
+
+            charts.sparkReq = new Chart(document.getElementById('sparklineReq'), sparkConfig(reqValues, PBI_COLORS.darkTeal));
+            charts.sparkRec = new Chart(document.getElementById('sparklineRec'), sparkConfig(recValues, PBI_COLORS.mint));
+        }
+
+        // ۲. نمودار ستونی خوشه‌ای ماهانه (مشابه Average Time on Products Page)
+        function renderMonthlyGroupedChart(monthlyStats) {
+            if (charts.monthlyGrouped) charts.monthlyGrouped.destroy();
+
+            const ctx = document.getElementById('monthlyGroupedChart');
+            charts.monthlyGrouped = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['فروردین', 'اردیبهشت', 'خرداد', 'تیر'],
+                    datasets: [
+                        {
+                            label: 'مقدار درخواستی',
+                            data: [monthlyStats['01'].req, monthlyStats['02'].req, monthlyStats['03'].req, monthlyStats['04'].req],
+                            backgroundColor: PBI_COLORS.mint,
+                            borderRadius: 2
+                        },
+                        {
+                            label: 'مقدار رسیده',
+                            data: [monthlyStats['01'].rec, monthlyStats['02'].rec, monthlyStats['03'].rec, monthlyStats['04'].rec],
+                            backgroundColor: PBI_COLORS.darkTeal,
+                            borderRadius: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { font: { family: 'Vazirmatn', size: 11 }, usePointStyle: true } }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { family: 'Vazirmatn', size: 11 } } },
+                        y: { border: { display: false }, grid: { color: '#F3F4F6' }, ticks: { font: { family: 'Vazirmatn', size: 10 } } }
+                    }
+                }
+            });
+        }
+
+        // ۳. نمودار ستونی مقایسه درخواستی و رسیده به تفکیک شماره درخواست (مشابه Average Time on Services Page)
+        function renderPrComparisonChart(data) {
+            if (charts.prComparison) charts.prComparison.destroy();
+
+            const labels = data.map(d => d.prNumber.replace('PR-1405-', '#'));
+            const reqData = data.map(d => d.reqQty);
+            const recData = data.map(d => d.recQty);
+
+            const ctx = document.getElementById('prComparisonChart');
+            charts.prComparison = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'مقدار درخواستی',
+                            data: reqData,
+                            backgroundColor: PBI_COLORS.turquoise,
+                            borderRadius: 2
+                        },
+                        {
+                            label: 'مقدار رسیده',
+                            data: recData,
+                            backgroundColor: PBI_COLORS.darkTeal,
+                            borderRadius: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { font: { family: 'Vazirmatn', size: 11 }, usePointStyle: true } }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { family: 'Vazirmatn', size: 10 } } },
+                        y: { border: { display: false }, grid: { color: '#F3F4F6' }, ticks: { font: { family: 'Vazirmatn', size: 10 } } }
+                    }
+                }
+            });
+        }
+
+        // ۴. نمودار میله‌ای افقی مدت زمان تحویل (مشابه 2022 - Views of Articles)
+        function renderLeadTimeChart(data) {
+            if (charts.leadTime) charts.leadTime.destroy();
+
+            // مرتب‌سازی بر اساس بیشترین زمان تحویل
+            const processed = data.map(d => {
+                const days = calculateJalaliDiffDays(d.reqDate, d.recDate);
+                return {
+                    label: d.prNumber,
+                    days: days !== null ? days : 0,
+                    isPending: days === null
+                };
+            }).sort((a, b) => b.days - a.days).slice(0, 8);
+
+            const ctx = document.getElementById('leadTimeHorizontalChart');
+            charts.leadTime = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: processed.map(p => p.label),
+                    datasets: [{
+                        label: 'مدت زمان تحویل (روز)',
+                        data: processed.map(p => p.days),
+                        backgroundColor: processed.map(p => p.days > 10 ? PBI_COLORS.darkTeal : PBI_COLORS.turquoise),
+                        borderRadius: 2
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: { grid: { color: '#F3F4F6' }, ticks: { font: { family: 'Vazirmatn', size: 10 } } },
+                        y: { grid: { display: false }, ticks: { font: { family: 'Vazirmatn', size: 10 } } }
+                    }
+                }
+            });
+        }
+
+        // ۵. نمودارهای افقی کوچک درصد وضعیت و سرعت (مشابه Articles Found via و Page Found via)
+        function renderStatusCharts(total, full, partial, pending, fast, normal, slow) {
+            if (charts.statusChart) charts.statusChart.destroy();
+            if (charts.speedChart) charts.speedChart.destroy();
+
+            const safePct = (val) => total > 0 ? Math.round((val / total) * 100) : 0;
+
+            const horizontalSmallConfig = (labels, values, colors) => ({
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: colors,
+                        borderRadius: 2,
+                        barThickness: 14
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: { label: (ctx) => `${ctx.raw}%` }
+                        }
+                    },
+                    scales: {
+                        x: { display: false, max: 100 },
+                        y: { grid: { display: false }, ticks: { font: { family: 'Vazirmatn', size: 10 } } }
+                    }
+                }
+            });
+
+            charts.statusChart = new Chart(
+                document.getElementById('statusHorizontalChart'),
+                horizontalSmallConfig(
+                    ['تحویل کامل', 'تحویل ناقص', 'در انتظار رسید'],
+                    [safePct(full), safePct(partial), safePct(pending)],
+                    [PBI_COLORS.darkTeal, PBI_COLORS.turquoise, PBI_COLORS.mint]
+                )
+            );
+
+            charts.speedChart = new Chart(
+                document.getElementById('speedHorizontalChart'),
+                horizontalSmallConfig(
+                    ['سریع (زیر ۱۰ روز)', 'عادی (۱۰ تا ۱۴ روز)', 'طولانی / باز'],
+                    [safePct(fast), safePct(normal), safePct(slow)],
+                    [PBI_COLORS.teal, PBI_COLORS.turquoise, PBI_COLORS.mint]
+                )
+            );
+        }
+
+        // ۶. رندر جدول داده‌ها در پایین سمت چپ
+        function renderDataTable(data) {
+            const tbody = document.getElementById('dataTableBody');
+            tbody.innerHTML = '';
+
+            data.forEach(item => {
+                const req = Number(item.reqQty) || 0;
+                const rec = Number(item.recQty) || 0;
+                let statusBadge = '';
+
+                if (rec === 0) {
+                    statusBadge = '<span class="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold">در انتظار</span>';
+                } else if (rec < req) {
+                    statusBadge = '<span class="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-[10px] font-bold">کسری دارد</span>';
+                } else {
+                    statusBadge = '<span class="bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded text-[10px] font-bold">تکمیل</span>';
+                }
+
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-teal-50/50 transition';
+                tr.innerHTML = `
+                    <td class="p-2 font-bold text-gray-800 whitespace-nowrap">${item.prNumber}</td>
+                    <td class="p-2 text-gray-600 whitespace-nowrap">${item.reqDate}</td>
+                    <td class="p-2 text-gray-600 whitespace-nowrap">${item.recDate || '---'}</td>
+                    <td class="p-2 text-center font-semibold">${req.toLocaleString('fa-IR')}</td>
+                    <td class="p-2 text-center font-semibold text-teal-700">${rec.toLocaleString('fa-IR')}</td>
+                    <td class="p-2 text-center whitespace-nowrap">${statusBadge}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // رویداد تغییر فیلتر ماه
+        document.getElementById('monthFilter').addEventListener('change', updateDashboard);
+
+        // رویداد آپلود فایل اکسل جدید توسط کاربر
+        document.getElementById('excelUpload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                    if (jsonData.length > 0) {
+                        // نگاشت هوشمند ستون‌های فارسی یا انگلیسی اکسل
+                        const mapped = jsonData.map((row, idx) => {
+                            const keys = Object.keys(row);
+                            const findVal = (keywords, fallbackIndex) => {
+                                const foundKey = keys.find(k => keywords.some(kw => k.includes(kw)));
+                                return foundKey ? row[foundKey] : (keys[fallbackIndex] ? row[keys[fallbackIndex]] : '');
+                            };
+
+                            return {
+                                prNumber: String(findVal(['شماره', 'درخواست', 'PR', 'کد'], 0) || `PR-${idx + 1}`),
+                                reqDate: String(findVal(['تاریخ درخواست', 'تاریخ'], 1) || '1405/01/01'),
+                                recDate: String(findVal(['تاریخ رسید', 'رسید', 'تحویل'], 2) || ''),
+                                reqQty: Number(findVal(['مقدار درخواستی', 'درخواستی', 'تعداد'], 3)) || 0,
+                                recQty: Number(findVal(['مقدار رسیده', 'رسیده', 'تحویلی'], 4)) || 0
+                            };
+                        });
+
+                        purchaseData = mapped;
+                        document.getElementById('monthFilter').value = 'ALL';
+                        updateDashboard();
+                        showToast(`فایل "${file.name}" با موفقیت بارگذاری و تحلیل شد (${mapped.length} ردیف).`);
+                    }
+                } catch (err) {
+                    showToast('خطا در خواندن فایل اکسل. لطفاً ساختار ستون‌ها را بررسی کنید.');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // اجرای اولیه داشبورد هنگام بارگذاری صفحه
+        window.addEventListener('DOMContentLoaded', updateDashboard);
+    </script>
+</body>
+</html>
